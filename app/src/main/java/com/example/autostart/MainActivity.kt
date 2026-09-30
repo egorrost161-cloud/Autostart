@@ -183,13 +183,12 @@ class MainActivity : AppCompatActivity() {
             textSize = 14f
             isChecked = currentMonitorEnabled
             setOnCheckedChangeListener { _, checked ->
-                // 1. Синхронно пишем настройку
+                // Просто сохраняем настройку. Сервис продолжает работать.
+                // Цикл монитора сам себя проверит на следующем шаге и выйдет, если false.
                 prefs.edit().putBoolean("monitor_enabled", checked).commit()
-                // 2. Принудительно убиваем сервис — при следующем запуске он прочитает настройку заново
-                stopService(Intent(this@MainActivity, KeepAliveService::class.java))
                 Toast.makeText(
                     this@MainActivity,
-                    if (checked) "Монитор включён" else "Монитор выключен и остановлен",
+                    if (checked) "Монитор включён" else "Монитор выключен",
                     Toast.LENGTH_SHORT
                 ).show()
             }
