@@ -15,16 +15,9 @@ class SystemEventReceiver : BroadcastReceiver() {
         Log.i("AutoStart", "Событие: $action")
 
         when (action) {
-            // Магнитола получила питание (зажигание)
             Intent.ACTION_POWER_CONNECTED -> startService(context)
-
-            // Экран включился
             Intent.ACTION_SCREEN_ON -> startService(context)
-
-            // Разблокировка (если есть)
             Intent.ACTION_USER_PRESENT -> startService(context)
-
-            // Wi-Fi включился
             WifiManager.WIFI_STATE_CHANGED_ACTION -> {
                 val state = intent.getIntExtra(
                     WifiManager.EXTRA_WIFI_STATE,
@@ -34,11 +27,7 @@ class SystemEventReceiver : BroadcastReceiver() {
                     startService(context)
                 }
             }
-
-            // Подключили гарнитуру / USB
             Intent.ACTION_HEADSET_PLUG -> startService(context)
-
-            // Смонтирована SD-карта
             Intent.ACTION_MEDIA_MOUNTED -> startService(context)
         }
     }
