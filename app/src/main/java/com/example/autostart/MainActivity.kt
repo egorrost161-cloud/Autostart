@@ -22,31 +22,40 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val current = prefs.getString("target_package", null)
-        val currentDelay = prefs.getLong("delay_sec", BootReceiver.DEFAULT_DELAY_SEC)
+        val currentDelay = prefs.getLong("delay_sec", KeepAliveService.DEFAULT_DELAY_SEC)
+        val currentInterval = prefs.getLong(
+            "monitor_interval_ms",
+            KeepAliveService.DEFAULT_MONITOR_INTERVAL_MS
+        ) / 1000
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 60, 40, 60)
         }
 
-        // === Информация ===
-        val header = TextView(this).apply {
-            text = "Автозапуск\n\nТекущий выбор: ${current ?: "не выбран"}"
+        root.addView(TextView(this).apply {
+            text = "AutoStart\n\nТекущий выбор: ${current ?: "не выбран"}"
             textSize = 16f
-        }
-        root.addView(header)
+        })
 
-        // === Кнопка разрешения наложения поверх окон ===
-        val btnOverlay = Button(this).apply {
-            text = "🔓 Разрешить наложение поверх окон"
+        // === Разрешения ===
+        root.addView(TextView(this).apply {
+            text = "\n🔐 Разрешения:"
+            textSize = 16f
+            setPadding(0, 30, 0, 10)
+        })
+
+        root.addView(Button(this).apply {
+            text = "🔓 Наложение поверх окон"
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     if (!Settings.canDrawOverlays(this@MainActivity)) {
-                        val intent = Intent(
-                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                            Uri.parse("package:$packageName")
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName")
+                            )
                         )
-                        startActivity(intent)
                         Toast.makeText(
                             this@MainActivity,
                             "Включите переключатель и вернитесь",
@@ -55,28 +64,34 @@ class MainActivity : AppCompatActivity() {
                     } else {
                         Toast.makeText(
                             this@MainActivity,
-                            "Разрешение уже выдано",
+                            "Уже выдано",
                             Toast.LENGTH_SHORT
                         ).show()
                     }
-                } else {
+                }
+            }
+        })
+
+        root.addView(Button(this).apply {
+            text = "📊 Статистика использования"
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                     Toast.makeText(
                         this@MainActivity,
-                        "Не требуется на этой версии Android",
-                        Toast.LENGTH_SHORT
+                        "Найдите AutoStart и включите",
+                        Toast.LENGTH_LONG
                     ).show()
                 }
             }
-        }
-        root.addView(btnOverlay)
+        })
 
         // === Задержка ===
-        val delayLabel = TextView(this).apply {
-            text = "\n⏱ Задержка после загрузки (секунд):"
+        root.addView(TextView(this).apply {
+            text = "\n⏱ Задержка перед запуском (сек):"
             textSize = 16f
             setPadding(0, 30, 0, 10)
-        }
-        root.addView(delayLabel)
+        })
 
         val delayInput = EditText(this).apply {
             inputType = InputType.TYPE_CLASS_NUMBER
@@ -89,51 +104,77 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, 10, 0, 10)
         }
-        val presets = listOf(5L, 10L, 15L, 30L)
-        for (sec in presets) {
+        listOf(5L, 10L, 15L, 30L).forEach { sec ->
             val btn = Button(this).apply {
                 text = "${sec}с"
                 textSize = 13f
-                setOnClickListener {
-                    delayInput.setText(sec.toString())
-                }
+                setOnClickListener { delayInput.setText(sec.toString()) }
             }
-            val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            btn.layoutParams = params
+            btn.layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            )
             presetsLayout.addView(btn)
         }
         root.addView(presetsLayout)
 
-        val btnSaveDelay = Button(this).apply {
+        root.addView(Button(this).apply {
             text = "💾 Сохранить задержку"
             setOnClickListener {
-                val value = delayInput.text.toString().toLongOrNull()
-                if (value == null || value < 0 || value > 600) {
+                val v = delayInput.text.toString().toLongOrNull()
+                if (v == null || v < 0 || v > 600) {
                     Toast.makeText(
-                        this@MainActivity,
-                        "Введите число от 0 до 600",
+                        this@MainActivity, "0–600 секунд",
                         Toast.LENGTH_SHORT
                     ).show()
                     return@setOnClickListener
                 }
-                prefs.edit().putLong("delay_sec", value).apply()
+                prefs.edit().putLong("delay_sec", v).apply()
                 Toast.makeText(
-                    this@MainActivity,
-                    "Задержка сохранена: ${value}с",
+                    this@MainActivity, "Задержка: ${v}с",
                     Toast.LENGTH_SHORT
                 ).show()
-                recreate()
             }
-        }
-        root.addView(btnSaveDelay)
+        })
 
-        // === Список приложений ===
-        val listLabel = TextView(this).apply {
-            text = "\n📱 Выберите приложение для автозапуска:"
+        // === Интервал монитора ===
+        root.addView(TextView(this).apply {
+            text = "\n🔄 Интервал проверки монитора (сек):"
             textSize = 16f
             setPadding(0, 30, 0, 10)
+        })
+
+        val intervalInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(currentInterval.toString())
+            textSize = 18f
         }
-        root.addView(listLabel)
+        root.addView(intervalInput)
+
+        root.addView(Button(this).apply {
+            text = "💾 Сохранить интервал"
+            setOnClickListener {
+                val v = intervalInput.text.toString().toLongOrNull()
+                if (v == null || v < 3 || v > 300) {
+                    Toast.makeText(
+                        this@MainActivity, "От 3 до 300 секунд",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@setOnClickListener
+                }
+                prefs.edit().putLong("monitor_interval_ms", v * 1000L).apply()
+                Toast.makeText(
+                    this@MainActivity, "Интервал: ${v}с",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
+
+        // === Список приложений ===
+        root.addView(TextView(this).apply {
+            text = "\n📱 Выберите приложение:"
+            textSize = 16f
+            setPadding(0, 30, 0, 10)
+        })
 
         val pm = packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
@@ -153,56 +194,59 @@ class MainActivity : AppCompatActivity() {
             val hasLaunch = pm.getLaunchIntentForPackage(pkg) != null
             if (!hasLaunch) continue
 
-            val btn = Button(this).apply {
+            listLayout.addView(Button(this).apply {
                 text = if (pkg == current) "✅ $label\n$pkg" else "$label\n$pkg"
                 textSize = 14f
                 setOnClickListener {
                     val saved = prefs.getString("target_package", null)
                     if (saved == pkg) {
                         prefs.edit().remove("target_package").apply()
-                        Toast.makeText(this@MainActivity, "Автозапуск отключён", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@MainActivity, "Автозапуск отключён",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     } else {
                         prefs.edit().putString("target_package", pkg).apply()
-                        Toast.makeText(this@MainActivity, "Выбрано: $label", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(
+                            this@MainActivity, "Выбрано: $label",
+                            Toast.LENGTH_SHORT
+                        ).show()
                     }
                     recreate()
                 }
-            }
-            listLayout.addView(btn)
+            })
         }
 
         scroll.addView(listLayout)
         root.addView(scroll)
 
-        // === Внизу ===
-        val btnClear = Button(this).apply {
+        root.addView(Button(this).apply {
             text = "🚫 Отключить автозапуск"
             setOnClickListener {
                 prefs.edit().remove("target_package").apply()
-                Toast.makeText(this@MainActivity, "Автозапуск отключён", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    this@MainActivity, "Отключено",
+                    Toast.LENGTH_SHORT
+                ).show()
                 recreate()
             }
-        }
-        root.addView(btnClear)
+        })
 
-        val btnTest = Button(this).apply {
-            text = "▶️ Запустить сейчас (проверка)"
+        root.addView(Button(this).apply {
+            text = "▶️ Запустить сервис сейчас"
             setOnClickListener {
-                val pkg = prefs.getString("target_package", null)
-                if (pkg.isNullOrEmpty()) {
-                    Toast.makeText(this@MainActivity, "Сначала выберите приложение", Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                val i = pm.getLaunchIntentForPackage(pkg)
-                if (i != null) {
-                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(i)
+                val i = Intent(this@MainActivity, KeepAliveService::class.java)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(i)
                 } else {
-                    Toast.makeText(this@MainActivity, "Не удалось запустить", Toast.LENGTH_SHORT).show()
+                    startService(i)
                 }
+                Toast.makeText(
+                    this@MainActivity, "Сервис запущен",
+                    Toast.LENGTH_SHORT
+                ).show()
             }
-        }
-        root.addView(btnTest)
+        })
 
         val outerScroll = ScrollView(this)
         outerScroll.addView(root)
