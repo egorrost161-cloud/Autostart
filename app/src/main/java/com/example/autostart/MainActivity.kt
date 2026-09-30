@@ -40,7 +40,7 @@ class MainActivity : AppCompatActivity() {
 
         // === Разрешения ===
         root.addView(TextView(this).apply {
-            text = "\n🔐 Разрешения:"
+            text = "\n🔐 Разрешения (нажми и выдай оба):"
             textSize = 16f
             setPadding(0, 30, 0, 10)
         })
@@ -58,7 +58,7 @@ class MainActivity : AppCompatActivity() {
                         )
                         Toast.makeText(
                             this@MainActivity,
-                            "Включите переключатель и вернитесь",
+                            "Включи переключатель и вернись",
                             Toast.LENGTH_LONG
                         ).show()
                     } else {
@@ -75,14 +75,12 @@ class MainActivity : AppCompatActivity() {
         root.addView(Button(this).apply {
             text = "📊 Статистика использования"
             setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Найдите AutoStart и включите",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
+                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                Toast.makeText(
+                    this@MainActivity,
+                    "Найди AutoStart и включи доступ",
+                    Toast.LENGTH_LONG
+                ).show()
             }
         })
 
@@ -171,7 +169,7 @@ class MainActivity : AppCompatActivity() {
 
         // === Список приложений ===
         root.addView(TextView(this).apply {
-            text = "\n📱 Выберите приложение:"
+            text = "\n📱 Выбери приложение для автозапуска:"
             textSize = 16f
             setPadding(0, 30, 0, 10)
         })
@@ -220,6 +218,7 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(listLayout)
         root.addView(scroll)
 
+        // === Внизу ===
         root.addView(Button(this).apply {
             text = "🚫 Отключить автозапуск"
             setOnClickListener {
