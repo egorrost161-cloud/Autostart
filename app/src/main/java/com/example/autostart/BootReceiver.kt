@@ -10,7 +10,7 @@ import android.util.Log
 class BootReceiver : BroadcastReceiver() {
 
     companion object {
-        private const val LAUNCH_DELAY_MS = 5000L
+        const val DEFAULT_DELAY_SEC = 5L
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -18,11 +18,15 @@ class BootReceiver : BroadcastReceiver() {
         if (action == Intent.ACTION_BOOT_COMPLETED ||
             action == "android.intent.action.QUICKBOOT_POWERON") {
 
-            Log.i("AutoStart", "BOOT_COMPLETED получен")
+            val prefs = context.getSharedPreferences("settings", Context.MODE_PRIVATE)
+            val delaySec = prefs.getLong("delay_sec", DEFAULT_DELAY_SEC)
+            val delayMs = delaySec * 1000L
+
+            Log.i("AutoStart", "BOOT_COMPLETED получен, задержка: ${delaySec}с")
 
             Handler(Looper.getMainLooper()).postDelayed({
                 launchTarget(context)
-            }, LAUNCH_DELAY_MS)
+            }, delayMs)
         }
     }
 
