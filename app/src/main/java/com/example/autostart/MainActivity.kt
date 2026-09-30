@@ -2,7 +2,10 @@ package com.example.autostart
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType
 import android.widget.Button
 import android.widget.EditText
@@ -28,11 +31,44 @@ class MainActivity : AppCompatActivity() {
 
         // === Информация ===
         val header = TextView(this).apply {
-            text = "Автозапуск\n\nТекущий выбор: ${current ?: "не выбран"}\n\n" +
-                   "Тапни приложение, чтобы выбрать. Тапни ещё раз — чтобы снять выбор."
+            text = "Автозапуск\n\nТекущий выбор: ${current ?: "не выбран"}"
             textSize = 16f
         }
         root.addView(header)
+
+        // === Кнопка разрешения наложения поверх окон ===
+        val btnOverlay = Button(this).apply {
+            text = "🔓 Разрешить наложение поверх окон"
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (!Settings.canDrawOverlays(this@MainActivity)) {
+                        val intent = Intent(
+                            Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                            Uri.parse("package:$packageName")
+                        )
+                        startActivity(intent)
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Включите переключатель и вернитесь",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Разрешение уже выдано",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                } else {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Не требуется на этой версии Android",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+            }
+        }
+        root.addView(btnOverlay)
 
         // === Задержка ===
         val delayLabel = TextView(this).apply {
@@ -138,7 +174,7 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(listLayout)
         root.addView(scroll)
 
-        // === Внизу: сброс + тест ===
+        // === Внизу ===
         val btnClear = Button(this).apply {
             text = "🚫 Отключить автозапуск"
             setOnClickListener {
