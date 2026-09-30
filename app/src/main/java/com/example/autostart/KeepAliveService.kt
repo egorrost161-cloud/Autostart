@@ -36,27 +36,36 @@ class KeepAliveService : Service() {
         val notification = buildNotification()
         startForeground(NOTIF_ID, notification)
 
+        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val monitorEnabled = prefs.getBoolean("monitor_enabled", false)
+
+        // Если монитор выключен, но был запущен — убиваем цикл немедленно
+        if (!monitorEnabled && monitorRunnable != null) {
+            Log.i("AutoStart", "Монитор выключен пользователем — убиваем цикл")
+            handler.removeCallbacks(monitorRunnable!!)
+            monitorRunnable = null
+        }
+
         if (isStarted) {
             Log.i("AutoStart", "Сервис уже работает")
+            if (monitorEnabled && monitorRunnable == null) {
+                startMonitor()
+            }
             return START_STICKY
         }
         isStarted = true
 
-        val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val delaySec = prefs.getLong("delay_sec", DEFAULT_DELAY_SEC)
         val delayMs = delaySec * 1000L
 
-        Log.i("AutoStart", "Сервис запущен, ждём ${delaySec}с")
+        Log.i("AutoStart", "Сервис запущен, ждём ${delaySec}с, монитор=$monitorEnabled")
 
         handler.postDelayed({
             launchTarget()
-
-            // Проверяем: включён ли монитор?
-            val monitorEnabled = prefs.getBoolean("monitor_enabled", true)
             if (monitorEnabled) {
                 startMonitor()
             } else {
-                Log.i("AutoStart", "Монитор выключен, сервис больше ничего не делает")
+                Log.i("AutoStart", "Монитор выключен — ничего больше не делаем")
             }
         }, delayMs)
 
@@ -69,6 +78,13 @@ class KeepAliveService : Service() {
 
         monitorRunnable = object : Runnable {
             override fun run() {
+                // Проверяем галочку на КАЖДОМ цикле
+                val enabled = prefs.getBoolean("monitor_enabled", false)
+                if (!enabled) {
+                    Log.i("AutoStart", "Монитор отключён — выходим из цикла")
+                    monitorRunnable = null
+                    return
+                }
                 launchTarget()
                 handler.postDelayed(this, intervalMs)
             }
@@ -118,7 +134,6 @@ class KeepAliveService : Service() {
             if (stats != null && stats.isNotEmpty()) {
                 val sorted = stats.sortedByDescending { it.lastTimeUsed }
                 val topPackage = sorted.firstOrNull()?.packageName
-                Log.i("AutoStart", "На переднем плане: $topPackage")
                 return topPackage == packageName
             }
         } catch (e: Exception) {
@@ -163,6 +178,7 @@ class KeepAliveService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         monitorRunnable?.let { handler.removeCallbacks(it) }
+        monitorRunnable = null
         isStarted = false
         Log.i("AutoStart", "Сервис остановлен")
     }
