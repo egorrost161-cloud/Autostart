@@ -50,7 +50,14 @@ class KeepAliveService : Service() {
 
         handler.postDelayed({
             launchTarget()
-            startMonitor()
+
+            // Проверяем: включён ли монитор?
+            val monitorEnabled = prefs.getBoolean("monitor_enabled", true)
+            if (monitorEnabled) {
+                startMonitor()
+            } else {
+                Log.i("AutoStart", "Монитор выключен, сервис больше ничего не делает")
+            }
         }, delayMs)
 
         return START_STICKY
