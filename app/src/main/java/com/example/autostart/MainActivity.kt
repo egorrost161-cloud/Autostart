@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.provider.Settings
 import android.text.InputType
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -27,6 +28,7 @@ class MainActivity : AppCompatActivity() {
             "monitor_interval_ms",
             KeepAliveService.DEFAULT_MONITOR_INTERVAL_MS
         ) / 1000
+        val currentMonitorEnabled = prefs.getBoolean("monitor_enabled", true)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -84,7 +86,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // === Задержка ===
+        // === Задержка перед запуском ===
         root.addView(TextView(this).apply {
             text = "\n⏱ Задержка перед запуском (сек):"
             textSize = 16f
@@ -134,11 +136,32 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // === Интервал монитора ===
+        // === Монитор ===
         root.addView(TextView(this).apply {
-            text = "\n🔄 Интервал проверки монитора (сек):"
+            text = "\n🔄 Постоянный монитор:"
             textSize = 16f
             setPadding(0, 30, 0, 10)
+        })
+
+        val monitorCheckbox = CheckBox(this).apply {
+            text = "Следить за приложением и возвращать его, если упало"
+            textSize = 15f
+            isChecked = currentMonitorEnabled
+            setOnCheckedChangeListener { _, checked ->
+                prefs.edit().putBoolean("monitor_enabled", checked).apply()
+                Toast.makeText(
+                    this@MainActivity,
+                    if (checked) "Монитор включён" else "Монитор выключен",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
+        root.addView(monitorCheckbox)
+
+        root.addView(TextView(this).apply {
+            text = "Интервал проверки (сек):"
+            textSize = 14f
+            setPadding(0, 20, 0, 10)
         })
 
         val intervalInput = EditText(this).apply {
@@ -147,6 +170,23 @@ class MainActivity : AppCompatActivity() {
             textSize = 18f
         }
         root.addView(intervalInput)
+
+        val intervalPresets = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 10, 0, 10)
+        }
+        listOf(5L, 8L, 15L, 30L).forEach { sec ->
+            val btn = Button(this).apply {
+                text = "${sec}с"
+                textSize = 13f
+                setOnClickListener { intervalInput.setText(sec.toString()) }
+            }
+            btn.layoutParams = LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+            )
+            intervalPresets.addView(btn)
+        }
+        root.addView(intervalPresets)
 
         root.addView(Button(this).apply {
             text = "💾 Сохранить интервал"
