@@ -3,7 +3,9 @@ package com.example.autostart
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -17,18 +19,85 @@ class MainActivity : AppCompatActivity() {
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val current = prefs.getString("target_package", null)
+        val currentDelay = prefs.getLong("delay_sec", BootReceiver.DEFAULT_DELAY_SEC)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(40, 60, 40, 60)
         }
 
+        // === Информация ===
         val header = TextView(this).apply {
             text = "Автозапуск\n\nТекущий выбор: ${current ?: "не выбран"}\n\n" +
                    "Тапни приложение, чтобы выбрать. Тапни ещё раз — чтобы снять выбор."
             textSize = 16f
         }
         root.addView(header)
+
+        // === Задержка ===
+        val delayLabel = TextView(this).apply {
+            text = "\n⏱ Задержка после загрузки (секунд):"
+            textSize = 16f
+            setPadding(0, 30, 0, 10)
+        }
+        root.addView(delayLabel)
+
+        val delayInput = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER
+            setText(currentDelay.toString())
+            textSize = 18f
+        }
+        root.addView(delayInput)
+
+        val presetsLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 10, 0, 10)
+        }
+        val presets = listOf(5L, 10L, 15L, 30L)
+        for (sec in presets) {
+            val btn = Button(this).apply {
+                text = "${sec}с"
+                textSize = 13f
+                setOnClickListener {
+                    delayInput.setText(sec.toString())
+                }
+            }
+            val params = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            btn.layoutParams = params
+            presetsLayout.addView(btn)
+        }
+        root.addView(presetsLayout)
+
+        val btnSaveDelay = Button(this).apply {
+            text = "💾 Сохранить задержку"
+            setOnClickListener {
+                val value = delayInput.text.toString().toLongOrNull()
+                if (value == null || value < 0 || value > 600) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Введите число от 0 до 600",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                    return@setOnClickListener
+                }
+                prefs.edit().putLong("delay_sec", value).apply()
+                Toast.makeText(
+                    this@MainActivity,
+                    "Задержка сохранена: ${value}с",
+                    Toast.LENGTH_SHORT
+                ).show()
+                recreate()
+            }
+        }
+        root.addView(btnSaveDelay)
+
+        // === Список приложений ===
+        val listLabel = TextView(this).apply {
+            text = "\n📱 Выберите приложение для автозапуска:"
+            textSize = 16f
+            setPadding(0, 30, 0, 10)
+        }
+        root.addView(listLabel)
 
         val pm = packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
@@ -69,6 +138,7 @@ class MainActivity : AppCompatActivity() {
         scroll.addView(listLayout)
         root.addView(scroll)
 
+        // === Внизу: сброс + тест ===
         val btnClear = Button(this).apply {
             text = "🚫 Отключить автозапуск"
             setOnClickListener {
@@ -98,6 +168,8 @@ class MainActivity : AppCompatActivity() {
         }
         root.addView(btnTest)
 
-        setContentView(root)
+        val outerScroll = ScrollView(this)
+        outerScroll.addView(root)
+        setContentView(outerScroll)
     }
 }
