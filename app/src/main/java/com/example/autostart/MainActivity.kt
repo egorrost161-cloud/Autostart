@@ -33,7 +33,7 @@ class MainActivity : AppCompatActivity() {
             "monitor_interval_ms",
             KeepAliveService.DEFAULT_MONITOR_INTERVAL_MS
         ) / 1000
-        val currentMonitorEnabled = prefs.getBoolean("monitor_enabled", true)
+        val currentMonitorEnabled = prefs.getBoolean("monitor_enabled", false)
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -125,7 +125,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(Button(this).apply {
             text = "🚫 Отключить автозапуск"
             setOnClickListener {
-                prefs.edit().remove("target_package").apply()
+                prefs.edit().remove("target_package").commit()
                 Toast.makeText(
                     this@MainActivity, "Отключено",
                     Toast.LENGTH_SHORT
@@ -164,7 +164,7 @@ class MainActivity : AppCompatActivity() {
                     ).show()
                     return@setOnClickListener
                 }
-                prefs.edit().putLong("delay_sec", v).apply()
+                prefs.edit().putLong("delay_sec", v).commit()
                 Toast.makeText(
                     this@MainActivity, "Задержка: ${v}с",
                     Toast.LENGTH_SHORT
@@ -183,10 +183,13 @@ class MainActivity : AppCompatActivity() {
             textSize = 14f
             isChecked = currentMonitorEnabled
             setOnCheckedChangeListener { _, checked ->
-                prefs.edit().putBoolean("monitor_enabled", checked).apply()
+                // 1. Синхронно пишем настройку
+                prefs.edit().putBoolean("monitor_enabled", checked).commit()
+                // 2. Принудительно убиваем сервис — при следующем запуске он прочитает настройку заново
+                stopService(Intent(this@MainActivity, KeepAliveService::class.java))
                 Toast.makeText(
                     this@MainActivity,
-                    if (checked) "Монитор включён" else "Монитор выключен",
+                    if (checked) "Монитор включён" else "Монитор выключен и остановлен",
                     Toast.LENGTH_SHORT
                 ).show()
             }
@@ -217,7 +220,7 @@ class MainActivity : AppCompatActivity() {
                     ).show()
                     return@setOnClickListener
                 }
-                prefs.edit().putLong("monitor_interval_ms", v * 1000L).apply()
+                prefs.edit().putLong("monitor_interval_ms", v * 1000L).commit()
                 Toast.makeText(
                     this@MainActivity, "Интервал: ${v}с",
                     Toast.LENGTH_SHORT
@@ -226,7 +229,7 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(createSpoyler("🔄 Постоянный монитор", monitorContent))
 
-        // ===== Список приложений (с иконками) =====
+        // ===== Список приложений =====
         root.addView(sectionTitle("📱 ВЫБЕРИ ПРИЛОЖЕНИЕ"))
 
         val pm = packageManager
@@ -252,13 +255,13 @@ class MainActivity : AppCompatActivity() {
             listLayout.addView(createAppRow(label, icon, isSelected) {
                 val saved = prefs.getString("target_package", null)
                 if (saved == pkg) {
-                    prefs.edit().remove("target_package").apply()
+                    prefs.edit().remove("target_package").commit()
                     Toast.makeText(
                         this@MainActivity, "Автозапуск отключён",
                         Toast.LENGTH_SHORT
                     ).show()
                 } else {
-                    prefs.edit().putString("target_package", pkg).apply()
+                    prefs.edit().putString("target_package", pkg).commit()
                     Toast.makeText(
                         this@MainActivity, "Выбрано: $label",
                         Toast.LENGTH_SHORT
@@ -285,10 +288,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Строка приложения: [иконка] [название]
-     * Если isSelected = true — фон подсвечивается, добавляется галочка.
-     */
     private fun createAppRow(
         label: String,
         icon: Drawable,
@@ -303,9 +302,9 @@ class MainActivity : AppCompatActivity() {
             isFocusable = true
 
             if (isSelected) {
-                setBackgroundColor(Color.parseColor("#4CAF50")) // зелёный фон для выбранного
+                setBackgroundColor(Color.parseColor("#4CAF50"))
             } else {
-                setBackgroundColor(Color.parseColor("#EEEEEE")) // светло-серый для остальных
+                setBackgroundColor(Color.parseColor("#EEEEEE"))
             }
 
             layoutParams = LinearLayout.LayoutParams(
@@ -315,7 +314,6 @@ class MainActivity : AppCompatActivity() {
                 setMargins(0, 6, 0, 6)
             }
 
-            // Иконка
             addView(ImageView(this@MainActivity).apply {
                 setImageDrawable(icon)
                 layoutParams = LinearLayout.LayoutParams(100, 100).apply {
@@ -323,7 +321,6 @@ class MainActivity : AppCompatActivity() {
                 }
             })
 
-            // Название
             addView(TextView(this@MainActivity).apply {
                 text = if (isSelected) "✅ $label" else label
                 textSize = 16f
