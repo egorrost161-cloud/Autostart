@@ -21,6 +21,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
@@ -112,7 +113,6 @@ class MainActivity : AppCompatActivity() {
                                 Toast.LENGTH_LONG
                             ).show()
                         } catch (e: Exception) {
-                            // Если прошивка не поддерживает диалог — открываем общий список
                             startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                             Toast.makeText(
                                 this@MainActivity,
@@ -158,6 +158,66 @@ class MainActivity : AppCompatActivity() {
             }
         })
         root.addView(createSpoyler("🧪 Тест: запустить сервис сейчас", testContent))
+
+        // ===== СПОЙЛЕР: Логи =====
+        val logContent = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, 8, 0, 8)
+        }
+        logContent.addView(TextView(this).apply {
+            text = "Файл лога:\n/storage/emulated/0/AutoStartLog/autostart_log.txt\n\n" +
+                   "Можно открыть через любой файловый менеджер на магнитоле."
+            textSize = 12f
+            setPadding(0, 4, 0, 8)
+        })
+        logContent.addView(Button(this).apply {
+            text = "📄 Показать последние 30 строк"
+            setOnClickListener {
+                try {
+                    val file = LogWriter.getLogFile()
+                    if (!file.exists()) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Лог пуст — событий ещё не было",
+                            Toast.LENGTH_LONG
+                        ).show()
+                        return@setOnClickListener
+                    }
+                    val lines = file.readLines().takeLast(30)
+                    if (lines.isEmpty()) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Лог пуст",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                        return@setOnClickListener
+                    }
+                    AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Последние 30 строк")
+                        .setMessage(lines.joinToString("\n"))
+                        .setPositiveButton("OK", null)
+                        .show()
+                } catch (e: Exception) {
+                    Toast.makeText(
+                        this@MainActivity,
+                        "Ошибка чтения: ${e.message}",
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            }
+        })
+        logContent.addView(Button(this).apply {
+            text = "🗑 Очистить лог"
+            setOnClickListener {
+                LogWriter.clearLog()
+                Toast.makeText(
+                    this@MainActivity,
+                    "Лог очищен",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
+        root.addView(createSpoyler("📄 Логи", logContent))
 
         // ===== Отключить автозапуск =====
         root.addView(Button(this).apply {
@@ -238,7 +298,7 @@ class MainActivity : AppCompatActivity() {
         monitorContent.addView(intervalInput)
 
         val intervalPresets = createPresetRow(
-            presets = listOf(5L, 8L, 15L, 30L),
+            presets = listOf(15L, 30L, 60L, 120L),
             onClick = { sec -> intervalInput.setText(sec.toString()) }
         )
         intervalPresets.visibility = View.GONE
@@ -248,9 +308,9 @@ class MainActivity : AppCompatActivity() {
             text = "💾 Сохранить интервал"
             setOnClickListener {
                 val v = intervalInput.text.toString().toLongOrNull()
-                if (v == null || v < 3 || v > 300) {
+                if (v == null || v < 5 || v > 600) {
                     Toast.makeText(
-                        this@MainActivity, "От 3 до 300 секунд",
+                        this@MainActivity, "От 5 до 600 секунд",
                         Toast.LENGTH_SHORT
                     ).show()
                     return@setOnClickListener
