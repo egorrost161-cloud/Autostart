@@ -29,6 +29,7 @@ class KeepAliveService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        LogWriter.init(this)
         createNotificationChannel()
         LogWriter.log("=== KeepAliveService onCreate ===")
     }
@@ -118,12 +119,12 @@ class KeepAliveService : Service() {
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(launchIntent)
-                LogWriter.log("✓ Запущен $targetPackage")
+                LogWriter.log("+ Запущен $targetPackage")
             } else {
-                LogWriter.log("✗ Не найдена точка входа для $targetPackage")
+                LogWriter.log("- Не найдена точка входа для $targetPackage")
             }
         } catch (e: Exception) {
-            LogWriter.log("✗ ОШИБКА запуска: ${e.message}")
+            LogWriter.log("- ОШИБКА запуска: ${e.message}")
         }
     }
 
