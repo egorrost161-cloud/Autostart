@@ -11,7 +11,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.util.Log
 import androidx.core.app.NotificationCompat
 
 class KeepAliveService : Service() {
@@ -19,10 +18,9 @@ class KeepAliveService : Service() {
     companion object {
         const val CHANNEL_ID = "autostart_keepalive"
         const val NOTIF_ID = 101
-        const val DEFAULT_MONITOR_INTERVAL_MS = 30000L  // 30 сек между проверками
+        const val DEFAULT_MONITOR_INTERVAL_MS = 30000L
         const val DEFAULT_DELAY_SEC = 15L
-        // Окно «активности»: если приложение было на переднем плане за это время — не трогаем
-        const val ACTIVITY_WINDOW_MS = 30 * 60 * 1000L  // 30 минут
+        const val ACTIVITY_WINDOW_MS = 30 * 60 * 1000L
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -32,6 +30,7 @@ class KeepAliveService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        LogWriter.log("=== KeepAliveService onCreate ===")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -40,24 +39,25 @@ class KeepAliveService : Service() {
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val monitorEnabled = prefs.getBoolean("monitor_enabled", false)
+        val targetPackage = prefs.getString("target_package", "не выбран")
 
-        // Если монитор выключен — убиваем цикл немедленно
+        LogWriter.log("Сервис onStartCommand: target=$targetPackage, monitor=$monitorEnabled")
+
         if (!monitorEnabled && monitorRunnable != null) {
-            Log.i("AutoStart", "Монитор выключен — убиваем цикл")
+            LogWriter.log("Монитор выключен — убиваем цикл")
             handler.removeCallbacks(monitorRunnable!!)
             monitorRunnable = null
         }
 
-        // Спецрежим: если intent с флагом FORCE_CHECK — сразу проверяем и выходим
         val forceCheck = intent?.getBooleanExtra("FORCE_CHECK", false) ?: false
         if (forceCheck) {
-            Log.i("AutoStart", "Принудительная проверка (SCREEN_ON)")
+            LogWriter.log("FORCE_CHECK — принудительная проверка")
             launchTarget()
             return START_STICKY
         }
 
         if (isStarted) {
-            Log.i("AutoStart", "Сервис уже работает")
+            LogWriter.log("Сервис уже работает")
             if (monitorEnabled && monitorRunnable == null) {
                 startMonitor()
             }
@@ -66,16 +66,14 @@ class KeepAliveService : Service() {
         isStarted = true
 
         var delaySec = prefs.getLong("delay_sec", DEFAULT_DELAY_SEC)
-        if (delaySec <= 0) delaySec = DEFAULT_DELAY_SEC  // защита от нуля
+        if (delaySec <= 0) delaySec = DEFAULT_DELAY_SEC
         val delayMs = delaySec * 1000L
 
-        Log.i("AutoStart", "Сервис запущен, ждём ${delaySec}с, монитор=$monitorEnabled")
+        LogWriter.log("Сервис запущен, ждём ${delaySec}с, монитор=$monitorEnabled")
 
         handler.postDelayed({
             launchTarget()
-            if (monitorEnabled) {
-                startMonitor()
-            }
+            if (monitorEnabled) startMonitor()
         }, delayMs)
 
         return START_STICKY
@@ -89,7 +87,7 @@ class KeepAliveService : Service() {
             override fun run() {
                 val enabled = prefs.getBoolean("monitor_enabled", false)
                 if (!enabled) {
-                    Log.i("AutoStart", "Монитор отключён — выходим из цикла")
+                    LogWriter.log("Монитор отключён — выходим")
                     monitorRunnable = null
                     return
                 }
@@ -98,7 +96,7 @@ class KeepAliveService : Service() {
             }
         }
         handler.postDelayed(monitorRunnable!!, intervalMs)
-        Log.i("AutoStart", "Монитор запущен, интервал ${intervalMs}мс")
+        LogWriter.log("Монитор запущен, интервал ${intervalMs}мс")
     }
 
     private fun launchTarget() {
@@ -106,14 +104,13 @@ class KeepAliveService : Service() {
         val targetPackage = prefs.getString("target_package", null)
 
         if (targetPackage.isNullOrEmpty()) {
-            Log.w("AutoStart", "Пакет не выбран")
+            LogWriter.log("Пакет не выбран — выход")
             return
         }
 
         try {
-            // ГЛАВНОЕ: если приложение активно за последние 30 минут — не трогаем
             if (wasActiveRecently(targetPackage)) {
-                Log.i("AutoStart", "$targetPackage был активен недавно — не трогаем")
+                LogWriter.log("$targetPackage активен недавно — не трогаем")
                 return
             }
 
@@ -121,20 +118,15 @@ class KeepAliveService : Service() {
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 startActivity(launchIntent)
-                Log.i("AutoStart", "Запущен $targetPackage")
+                LogWriter.log("✓ Запущен $targetPackage")
             } else {
-                Log.e("AutoStart", "Не найдена точка входа для $targetPackage")
+                LogWriter.log("✗ Не найдена точка входа для $targetPackage")
             }
         } catch (e: Exception) {
-            Log.e("AutoStart", "Ошибка запуска: ${e.message}")
+            LogWriter.log("✗ ОШИБКА запуска: ${e.message}")
         }
     }
 
-    /**
-     * Проверяет, было ли приложение активно за последние ACTIVITY_WINDOW_MS миллисекунд.
-     * Если да — значит оно живо (свёрнуто), не трогаем.
-     * Если нет — возможно, убито, запускаем.
-     */
     private fun wasActiveRecently(packageName: String): Boolean {
         try {
             val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
@@ -146,15 +138,13 @@ class KeepAliveService : Service() {
 
             for (stat in stats) {
                 if (stat.packageName == packageName) {
-                    // lastTimeUsed — когда приложение последний раз было на переднем плане
                     if (now - stat.lastTimeUsed < ACTIVITY_WINDOW_MS) {
-                        Log.i("AutoStart", "$packageName активен ${(now - stat.lastTimeUsed)/1000}с назад")
                         return true
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e("AutoStart", "Ошибка UsageStats: ${e.message}")
+            LogWriter.log("Ошибка UsageStats: ${e.message}")
         }
         return false
     }
@@ -197,7 +187,7 @@ class KeepAliveService : Service() {
         monitorRunnable?.let { handler.removeCallbacks(it) }
         monitorRunnable = null
         isStarted = false
-        Log.i("AutoStart", "Сервис остановлен")
+        LogWriter.log("=== Сервис остановлен ===")
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
