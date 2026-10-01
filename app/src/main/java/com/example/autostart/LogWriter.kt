@@ -1,6 +1,6 @@
 package com.example.autostart
 
-import android.os.Environment
+import android.content.Context
 import android.util.Log
 import java.io.File
 import java.text.SimpleDateFormat
@@ -10,23 +10,24 @@ import java.util.Locale
 object LogWriter {
 
     private const val TAG = "AutoStart"
-    private const val LOG_DIR = "AutoStartLog"
     private const val LOG_FILE = "autostart_log.txt"
-    private const val MAX_SIZE_BYTES = 500 * 1024L // 500 KB
+    private const val MAX_SIZE_BYTES = 500 * 1024L
 
     private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
 
+    private var appContext: Context? = null
+
+    fun init(context: Context) {
+        appContext = context.applicationContext
+    }
+
     fun log(message: String) {
-        // Дублируем в системный лог
         Log.i(TAG, message)
 
         try {
-            val dir = File(Environment.getExternalStorageDirectory(), LOG_DIR)
-            if (!dir.exists()) dir.mkdirs()
+            val ctx = appContext ?: return
+            val file = File(ctx.filesDir, LOG_FILE)
 
-            val file = File(dir, LOG_FILE)
-
-            // Если файл больше 500 КБ — очищаем (оставляем последние 100 строк)
             if (file.exists() && file.length() > MAX_SIZE_BYTES) {
                 val lines = file.readLines()
                 val last = lines.takeLast(100)
@@ -40,17 +41,29 @@ object LogWriter {
         }
     }
 
-    fun getLogFile(): File {
-        val dir = File(Environment.getExternalStorageDirectory(), LOG_DIR)
-        return File(dir, LOG_FILE)
+    fun readLog(): String {
+        return try {
+            val ctx = appContext ?: return "LogWriter не инициализирован"
+            val file = File(ctx.filesDir, LOG_FILE)
+            if (!file.exists()) return "Лог пуст — событий ещё не было"
+            file.readText()
+        } catch (e: Exception) {
+            "Ошибка чтения лога: ${e.message}"
+        }
     }
 
     fun clearLog() {
         try {
-            val file = getLogFile()
+            val ctx = appContext ?: return
+            val file = File(ctx.filesDir, LOG_FILE)
             if (file.exists()) file.delete()
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка очистки лога: ${e.message}")
         }
+    }
+
+    fun getLogPath(): String {
+        val ctx = appContext ?: return "(не инициализирован)"
+        return File(ctx.filesDir, LOG_FILE).absolutePath
     }
 }
