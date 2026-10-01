@@ -15,9 +15,21 @@ class SystemEventReceiver : BroadcastReceiver() {
         Log.i("AutoStart", "Событие: $action")
 
         when (action) {
+            // ===== Питание (зажигание) =====
             Intent.ACTION_POWER_CONNECTED -> startService(context)
+            Intent.ACTION_POWER_DISCONNECTED -> {
+                // Не запускаем — но лог полезен
+                Log.i("AutoStart", "Питание отключено")
+            }
+
+            // ===== Экран =====
             Intent.ACTION_SCREEN_ON -> startService(context)
+            Intent.ACTION_SCREEN_OFF -> {
+                Log.i("AutoStart", "Экран выключен")
+            }
             Intent.ACTION_USER_PRESENT -> startService(context)
+
+            // ===== Wi-Fi / сеть =====
             WifiManager.WIFI_STATE_CHANGED_ACTION -> {
                 val state = intent.getIntExtra(
                     WifiManager.EXTRA_WIFI_STATE,
@@ -27,8 +39,31 @@ class SystemEventReceiver : BroadcastReceiver() {
                     startService(context)
                 }
             }
+            WifiManager.NETWORK_STATE_CHANGED_ACTION -> startService(context)
+            "android.net.conn.CONNECTIVITY_CHANGE" -> startService(context)
+            Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
+                Log.i("AutoStart", "Авиарежим изменён")
+            }
+
+            // ===== Периферия =====
             Intent.ACTION_HEADSET_PLUG -> startService(context)
+
+            // ===== Медиа =====
             Intent.ACTION_MEDIA_MOUNTED -> startService(context)
+            Intent.ACTION_MEDIA_EJECT -> {
+                Log.i("AutoStart", "SD-карта извлечена")
+            }
+            Intent.ACTION_MEDIA_REMOVED -> {
+                Log.i("AutoStart", "SD-карта извлечена (removed)")
+            }
+
+            // ===== Изменения в системе =====
+            Intent.ACTION_PACKAGE_FULLY_REMOVED -> {
+                Log.i("AutoStart", "Приложение удалено")
+            }
+            "android.intent.action.PROVIDER_CHANGED" -> {
+                Log.i("AutoStart", "Provider changed")
+            }
         }
     }
 
