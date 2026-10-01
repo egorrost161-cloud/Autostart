@@ -1,5 +1,6 @@
 package com.example.autostart
 
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -31,6 +32,151 @@ class MainActivity : AppCompatActivity() {
         LogWriter.init(this)
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
+        val setupDone = prefs.getBoolean("setup_done", false)
+        val allGranted = areAllPermissionsGranted()
+
+        // П3: если разрешения слетели — снова показываем экран приветствия
+        if (allGranted) {
+            prefs.edit().putBoolean("setup_done", true).commit()
+        } else if (setupDone) {
+            // Разрешения были выданы, но сейчас пропали
+            prefs.edit().putBoolean("setup_done", false).commit()
+        }
+
+        if (!prefs.getBoolean("setup_done", false)) {
+            showSetupScreen(prefs)
+        } else {
+            showMainScreen(prefs)
+        }
+    }
+
+    // ============================================================
+    // ЭКРАН ПРИВЕТСТВИЯ (первый запуск или если разрешения слетели)
+    // ============================================================
+
+    private fun showSetupScreen(prefs: android.content.SharedPreferences) {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(40, 60, 40, 40)
+        }
+
+        root.addView(TextView(this).apply {
+            text = "AutoStart"
+            textSize = 26f
+            gravity = Gravity.CENTER
+        })
+        root.addView(TextView(this).apply {
+            text = "\nДля работы нужно 3 разрешения.\n" +
+                   "Нажми на каждое — откроется системная настройка.\n"
+            textSize = 15f
+            gravity = Gravity.CENTER
+            setPadding(0, 20, 0, 20)
+        })
+
+        // Кнопка 1: Наложение
+        val btnOverlay = Button(this).apply {
+            text = overlayLabel()
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    if (!Settings.canDrawOverlays(this@MainActivity)) {
+                        startActivity(
+                            Intent(
+                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:$packageName")
+                            )
+                        )
+                    } else {
+                        Toast.makeText(this@MainActivity, "Уже выдано", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        root.addView(btnOverlay)
+
+        // Кнопка 2: Статистика
+        val btnStats = Button(this).apply {
+            text = usageStatsLabel()
+            setOnClickListener {
+                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                Toast.makeText(
+                    this@MainActivity,
+                    "Найди AutoStart и включи доступ",
+                    Toast.LENGTH_LONG
+                ).show()
+            }
+        }
+        root.addView(btnStats)
+
+        // Кнопка 3: Батарея
+        val btnBattery = Button(this).apply {
+            text = batteryLabel()
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                        try {
+                            startActivity(
+                                Intent(
+                                    Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                    Uri.parse("package:$packageName")
+                                )
+                            )
+                        } catch (e: Exception) {
+                            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                        }
+                    } else {
+                        Toast.makeText(this@MainActivity, "Уже выдано", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+        root.addView(btnBattery)
+
+        // Кнопка «Продолжить» — не блокируется (П2 = Нет)
+        root.addView(Button(this).apply {
+            text = "ПРОДОЛЖИТЬ"
+            setPadding(0, 40, 0, 0)
+            setOnClickListener {
+                // Сохраняем статус «setup_done» только если всё выдано
+                if (areAllPermissionsGranted()) {
+                    prefs.edit().putBoolean("setup_done", true).commit()
+                }
+                recreate()
+            }
+        })
+
+        // Кнопка «Проверить снова» — обновить статусы
+        root.addView(Button(this).apply {
+            text = "Обновить статус"
+            setOnClickListener { recreate() }
+        })
+
+        setContentView(root)
+    }
+
+    private fun overlayLabel(): String {
+        val granted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && Settings.canDrawOverlays(this)
+        return if (granted) "✅ Наложение поверх окон" else "❌ Наложение поверх окон"
+    }
+
+    private fun usageStatsLabel(): String {
+        return if (hasUsageStatsPermission()) "✅ Статистика использования"
+        else "❌ Статистика использования"
+    }
+
+    private fun batteryLabel(): String {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return "✅ Игнор батареи"
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        return if (pm.isIgnoringBatteryOptimizations(packageName))
+            "✅ Игнор батареи" else "❌ Игнор батареи"
+    }
+
+    // ============================================================
+    // ГЛАВНЫЙ ЭКРАН (когда все разрешения выданы)
+    // ============================================================
+
+    private fun showMainScreen(prefs: android.content.SharedPreferences) {
         val current = prefs.getString("target_package", null)
         val currentDelay = prefs.getLong("delay_sec", KeepAliveService.DEFAULT_DELAY_SEC)
         val currentInterval = prefs.getLong(
@@ -44,6 +190,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(40, 40, 40, 40)
         }
 
+        // Шапка
         root.addView(TextView(this).apply {
             text = "AutoStart"
             textSize = 24f
@@ -54,83 +201,26 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 12)
         })
 
-        // ===== Разрешения =====
-        root.addView(sectionTitle("РАЗРЕШЕНИЯ (выдай все три)"))
-
-        root.addView(Button(this).apply {
-            text = "Наложение поверх окон"
-            setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    if (!Settings.canDrawOverlays(this@MainActivity)) {
-                        startActivity(
-                            Intent(
-                                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                                Uri.parse("package:$packageName")
-                            )
-                        )
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Включи переключатель и вернись",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        Toast.makeText(
-                            this@MainActivity, "Уже выдано",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
+        // П1 = B: баннер «не все разрешения выданы»
+        if (!areAllPermissionsGranted()) {
+            val banner = Button(this).apply {
+                text = "⚠️ Не все разрешения выданы — нажми сюда"
+                setBackgroundColor(Color.parseColor("#FF9800"))
+                setTextColor(Color.WHITE)
+                setOnClickListener {
+                    prefs.edit().putBoolean("setup_done", false).commit()
+                    recreate()
                 }
             }
-        })
+            root.addView(banner)
+            root.addView(TextView(this).apply {
+                text = "Без разрешений автозапуск может не работать.\n"
+                textSize = 12f
+                setPadding(0, 8, 0, 12)
+            })
+        }
 
-        root.addView(Button(this).apply {
-            text = "Статистика использования"
-            setOnClickListener {
-                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                Toast.makeText(
-                    this@MainActivity,
-                    "Найди AutoStart и включи доступ",
-                    Toast.LENGTH_LONG
-                ).show()
-            }
-        })
-
-        root.addView(Button(this).apply {
-            text = "Игнорировать оптимизацию батареи"
-            setOnClickListener {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                    if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                        try {
-                            val intent = Intent(
-                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                                Uri.parse("package:$packageName")
-                            )
-                            startActivity(intent)
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Подтверди в диалоге",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } catch (e: Exception) {
-                            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                            Toast.makeText(
-                                this@MainActivity,
-                                "Найди AutoStart в списке",
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    } else {
-                        Toast.makeText(
-                            this@MainActivity, "Уже выдано",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-            }
-        })
-
-        // ===== СПОЙЛЕР: Тест =====
+        // Тест
         val testContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
@@ -159,14 +249,13 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(createSpoyler("ТЕСТ: запустить сервис сейчас", testContent))
 
-        // ===== СПОЙЛЕР: Логи =====
+        // Логи
         val logContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
         }
         logContent.addView(TextView(this).apply {
-            text = "Лог сохраняется во внутренней памяти приложения.\n" +
-                   "Посмотреть можно кнопкой ниже."
+            text = "Лог сохраняется во внутренней памяти приложения."
             textSize = 12f
             setPadding(0, 4, 0, 8)
         })
@@ -175,11 +264,7 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 val text = LogWriter.readLog()
                 if (text.isEmpty() || text == "Лог пуст — событий ещё не было") {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Лог пуст",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@MainActivity, "Лог пуст", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 val lines = text.lines().takeLast(30)
@@ -194,29 +279,22 @@ class MainActivity : AppCompatActivity() {
             text = "Очистить лог"
             setOnClickListener {
                 LogWriter.clearLog()
-                Toast.makeText(
-                    this@MainActivity,
-                    "Лог очищен",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this@MainActivity, "Лог очищен", Toast.LENGTH_SHORT).show()
             }
         })
         root.addView(createSpoyler("ЛОГИ", logContent))
 
-        // ===== Отключить автозапуск =====
+        // Отключить автозапуск
         root.addView(Button(this).apply {
             text = "Отключить автозапуск"
             setOnClickListener {
                 prefs.edit().remove("target_package").commit()
-                Toast.makeText(
-                    this@MainActivity, "Отключено",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this@MainActivity, "Отключено", Toast.LENGTH_SHORT).show()
                 recreate()
             }
         })
 
-        // ===== СПОЙЛЕР: Задержка =====
+        // Задержка
         val delayContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
@@ -240,22 +318,16 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 val v = delayInput.text.toString().toLongOrNull()
                 if (v == null || v < 0 || v > 600) {
-                    Toast.makeText(
-                        this@MainActivity, "0-600 секунд",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@MainActivity, "0-600 секунд", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 prefs.edit().putLong("delay_sec", v).commit()
-                Toast.makeText(
-                    this@MainActivity, "Задержка: ${v}с",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this@MainActivity, "Задержка: ${v}с", Toast.LENGTH_SHORT).show()
             }
         })
         root.addView(createSpoyler("ЗАДЕРЖКА ПЕРЕД ЗАПУСКОМ", delayContent))
 
-        // ===== СПОЙЛЕР: Монитор =====
+        // Монитор
         val monitorContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
@@ -293,22 +365,16 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener {
                 val v = intervalInput.text.toString().toLongOrNull()
                 if (v == null || v < 5 || v > 600) {
-                    Toast.makeText(
-                        this@MainActivity, "От 5 до 600 секунд",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@MainActivity, "От 5 до 600 секунд", Toast.LENGTH_SHORT).show()
                     return@setOnClickListener
                 }
                 prefs.edit().putLong("monitor_interval_ms", v * 1000L).commit()
-                Toast.makeText(
-                    this@MainActivity, "Интервал: ${v}с",
-                    Toast.LENGTH_SHORT
-                ).show()
+                Toast.makeText(this@MainActivity, "Интервал: ${v}с", Toast.LENGTH_SHORT).show()
             }
         })
         root.addView(createSpoyler("ПОСТОЯННЫЙ МОНИТОР", monitorContent))
 
-        // ===== Список приложений =====
+        // Список приложений
         root.addView(sectionTitle("ВЫБЕРИ ПРИЛОЖЕНИЕ"))
 
         val pm = packageManager
@@ -335,16 +401,10 @@ class MainActivity : AppCompatActivity() {
                 val saved = prefs.getString("target_package", null)
                 if (saved == pkg) {
                     prefs.edit().remove("target_package").commit()
-                    Toast.makeText(
-                        this@MainActivity, "Автозапуск отключён",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@MainActivity, "Автозапуск отключён", Toast.LENGTH_SHORT).show()
                 } else {
                     prefs.edit().putString("target_package", pkg).commit()
-                    Toast.makeText(
-                        this@MainActivity, "Выбрано: $label",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(this@MainActivity, "Выбрано: $label", Toast.LENGTH_SHORT).show()
                 }
                 recreate()
             })
@@ -355,6 +415,46 @@ class MainActivity : AppCompatActivity() {
         val outerScroll = ScrollView(this)
         outerScroll.addView(root)
         setContentView(outerScroll)
+    }
+
+    // ============================================================
+    // ХЕЛПЕРЫ
+    // ============================================================
+
+    private fun areAllPermissionsGranted(): Boolean {
+        val overlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || Settings.canDrawOverlays(this)
+        val stats = hasUsageStatsPermission()
+        val battery = if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
+            true
+        } else {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            pm.isIgnoringBatteryOptimizations(packageName)
+        }
+        return overlay && stats && battery
+    }
+
+    private fun hasUsageStatsPermission(): Boolean {
+        return try {
+            val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                appOps.unsafeCheckOpNoThrow(
+                    AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    android.os.Process.myUid(),
+                    packageName
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                appOps.checkOpNoThrow(
+                    AppOpsManager.OPSTR_GET_USAGE_STATS,
+                    android.os.Process.myUid(),
+                    packageName
+                )
+            }
+            mode == AppOpsManager.MODE_ALLOWED
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun sectionTitle(text: String): TextView {
