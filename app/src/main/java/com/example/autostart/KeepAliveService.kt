@@ -19,8 +19,10 @@ class KeepAliveService : Service() {
     companion object {
         const val CHANNEL_ID = "autostart_keepalive"
         const val NOTIF_ID = 101
-        const val DEFAULT_MONITOR_INTERVAL_MS = 8000L
+        const val DEFAULT_MONITOR_INTERVAL_MS = 30000L  // 30 сек между проверками
         const val DEFAULT_DELAY_SEC = 15L
+        // Окно «активности»: если приложение было на переднем плане за это время — не трогаем
+        const val ACTIVITY_WINDOW_MS = 30 * 60 * 1000L  // 30 минут
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -39,11 +41,19 @@ class KeepAliveService : Service() {
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val monitorEnabled = prefs.getBoolean("monitor_enabled", false)
 
-        // Если монитор выключен, но был запущен — убиваем цикл немедленно
+        // Если монитор выключен — убиваем цикл немедленно
         if (!monitorEnabled && monitorRunnable != null) {
-            Log.i("AutoStart", "Монитор выключен пользователем — убиваем цикл")
+            Log.i("AutoStart", "Монитор выключен — убиваем цикл")
             handler.removeCallbacks(monitorRunnable!!)
             monitorRunnable = null
+        }
+
+        // Спецрежим: если intent с флагом FORCE_CHECK — сразу проверяем и выходим
+        val forceCheck = intent?.getBooleanExtra("FORCE_CHECK", false) ?: false
+        if (forceCheck) {
+            Log.i("AutoStart", "Принудительная проверка (SCREEN_ON)")
+            launchTarget()
+            return START_STICKY
         }
 
         if (isStarted) {
@@ -55,7 +65,8 @@ class KeepAliveService : Service() {
         }
         isStarted = true
 
-        val delaySec = prefs.getLong("delay_sec", DEFAULT_DELAY_SEC)
+        var delaySec = prefs.getLong("delay_sec", DEFAULT_DELAY_SEC)
+        if (delaySec <= 0) delaySec = DEFAULT_DELAY_SEC  // защита от нуля
         val delayMs = delaySec * 1000L
 
         Log.i("AutoStart", "Сервис запущен, ждём ${delaySec}с, монитор=$monitorEnabled")
@@ -64,8 +75,6 @@ class KeepAliveService : Service() {
             launchTarget()
             if (monitorEnabled) {
                 startMonitor()
-            } else {
-                Log.i("AutoStart", "Монитор выключен — ничего больше не делаем")
             }
         }, delayMs)
 
@@ -78,7 +87,6 @@ class KeepAliveService : Service() {
 
         monitorRunnable = object : Runnable {
             override fun run() {
-                // Проверяем галочку на КАЖДОМ цикле
                 val enabled = prefs.getBoolean("monitor_enabled", false)
                 if (!enabled) {
                     Log.i("AutoStart", "Монитор отключён — выходим из цикла")
@@ -90,7 +98,6 @@ class KeepAliveService : Service() {
             }
         }
         handler.postDelayed(monitorRunnable!!, intervalMs)
-
         Log.i("AutoStart", "Монитор запущен, интервал ${intervalMs}мс")
     }
 
@@ -104,8 +111,9 @@ class KeepAliveService : Service() {
         }
 
         try {
-            if (isAppInForeground(targetPackage)) {
-                Log.i("AutoStart", "$targetPackage уже активно")
+            // ГЛАВНОЕ: если приложение активно за последние 30 минут — не трогаем
+            if (wasActiveRecently(targetPackage)) {
+                Log.i("AutoStart", "$targetPackage был активен недавно — не трогаем")
                 return
             }
 
@@ -122,19 +130,28 @@ class KeepAliveService : Service() {
         }
     }
 
-    private fun isAppInForeground(packageName: String): Boolean {
+    /**
+     * Проверяет, было ли приложение активно за последние ACTIVITY_WINDOW_MS миллисекунд.
+     * Если да — значит оно живо (свёрнуто), не трогаем.
+     * Если нет — возможно, убито, запускаем.
+     */
+    private fun wasActiveRecently(packageName: String): Boolean {
         try {
             val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
             val now = System.currentTimeMillis()
-            val stats = usm.queryUsageStats(
-                UsageStatsManager.INTERVAL_DAILY,
-                now - 1000 * 60,
-                now
-            )
-            if (stats != null && stats.isNotEmpty()) {
-                val sorted = stats.sortedByDescending { it.lastTimeUsed }
-                val topPackage = sorted.firstOrNull()?.packageName
-                return topPackage == packageName
+            val begin = now - ACTIVITY_WINDOW_MS
+
+            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, begin, now)
+            if (stats == null || stats.isEmpty()) return false
+
+            for (stat in stats) {
+                if (stat.packageName == packageName) {
+                    // lastTimeUsed — когда приложение последний раз было на переднем плане
+                    if (now - stat.lastTimeUsed < ACTIVITY_WINDOW_MS) {
+                        Log.i("AutoStart", "$packageName активен ${(now - stat.lastTimeUsed)/1000}с назад")
+                        return true
+                    }
+                }
             }
         } catch (e: Exception) {
             Log.e("AutoStart", "Ошибка UsageStats: ${e.message}")
