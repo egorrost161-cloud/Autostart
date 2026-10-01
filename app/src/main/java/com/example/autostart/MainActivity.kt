@@ -28,6 +28,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        LogWriter.init(this)
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
         val current = prefs.getString("target_package", null)
@@ -43,7 +44,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(40, 40, 40, 40)
         }
 
-        // ===== Шапка =====
         root.addView(TextView(this).apply {
             text = "AutoStart"
             textSize = 24f
@@ -55,10 +55,10 @@ class MainActivity : AppCompatActivity() {
         })
 
         // ===== Разрешения =====
-        root.addView(sectionTitle("🔐 РАЗРЕШЕНИЯ (выдай все три)"))
+        root.addView(sectionTitle("РАЗРЕШЕНИЯ (выдай все три)"))
 
         root.addView(Button(this).apply {
-            text = "🔓 Наложение поверх окон"
+            text = "Наложение поверх окон"
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     if (!Settings.canDrawOverlays(this@MainActivity)) {
@@ -84,7 +84,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(Button(this).apply {
-            text = "📊 Статистика использования"
+            text = "Статистика использования"
             setOnClickListener {
                 startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
                 Toast.makeText(
@@ -96,7 +96,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         root.addView(Button(this).apply {
-            text = "🔋 Игнорировать оптимизацию батареи"
+            text = "Игнорировать оптимизацию батареи"
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -142,7 +142,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 4, 0, 8)
         })
         testContent.addView(Button(this).apply {
-            text = "▶️ Запустить сервис сейчас"
+            text = "Запустить сервис сейчас"
             setOnClickListener {
                 val i = Intent(this@MainActivity, KeepAliveService::class.java)
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -157,7 +157,7 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
         })
-        root.addView(createSpoyler("🧪 Тест: запустить сервис сейчас", testContent))
+        root.addView(createSpoyler("ТЕСТ: запустить сервис сейчас", testContent))
 
         // ===== СПОЙЛЕР: Логи =====
         val logContent = LinearLayout(this).apply {
@@ -165,49 +165,33 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 8)
         }
         logContent.addView(TextView(this).apply {
-            text = "Файл лога:\n/storage/emulated/0/AutoStartLog/autostart_log.txt\n\n" +
-                   "Можно открыть через любой файловый менеджер на магнитоле."
+            text = "Лог сохраняется во внутренней памяти приложения.\n" +
+                   "Посмотреть можно кнопкой ниже."
             textSize = 12f
             setPadding(0, 4, 0, 8)
         })
         logContent.addView(Button(this).apply {
-            text = "📄 Показать последние 30 строк"
+            text = "Показать последние 30 строк"
             setOnClickListener {
-                try {
-                    val file = LogWriter.getLogFile()
-                    if (!file.exists()) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Лог пуст — событий ещё не было",
-                            Toast.LENGTH_LONG
-                        ).show()
-                        return@setOnClickListener
-                    }
-                    val lines = file.readLines().takeLast(30)
-                    if (lines.isEmpty()) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Лог пуст",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                        return@setOnClickListener
-                    }
-                    AlertDialog.Builder(this@MainActivity)
-                        .setTitle("Последние 30 строк")
-                        .setMessage(lines.joinToString("\n"))
-                        .setPositiveButton("OK", null)
-                        .show()
-                } catch (e: Exception) {
+                val text = LogWriter.readLog()
+                if (text.isEmpty() || text == "Лог пуст — событий ещё не было") {
                     Toast.makeText(
                         this@MainActivity,
-                        "Ошибка чтения: ${e.message}",
-                        Toast.LENGTH_LONG
+                        "Лог пуст",
+                        Toast.LENGTH_SHORT
                     ).show()
+                    return@setOnClickListener
                 }
+                val lines = text.lines().takeLast(30)
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Последние 30 строк")
+                    .setMessage(lines.joinToString("\n"))
+                    .setPositiveButton("OK", null)
+                    .show()
             }
         })
         logContent.addView(Button(this).apply {
-            text = "🗑 Очистить лог"
+            text = "Очистить лог"
             setOnClickListener {
                 LogWriter.clearLog()
                 Toast.makeText(
@@ -217,11 +201,11 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
         })
-        root.addView(createSpoyler("📄 Логи", logContent))
+        root.addView(createSpoyler("ЛОГИ", logContent))
 
         // ===== Отключить автозапуск =====
         root.addView(Button(this).apply {
-            text = "🚫 Отключить автозапуск"
+            text = "Отключить автозапуск"
             setOnClickListener {
                 prefs.edit().remove("target_package").commit()
                 Toast.makeText(
@@ -249,15 +233,15 @@ class MainActivity : AppCompatActivity() {
             onClick = { sec -> delayInput.setText(sec.toString()) }
         )
         delayPresets.visibility = View.GONE
-        delayContent.addView(createSpoyler("⚙️ Быстрые пресеты", delayPresets))
+        delayContent.addView(createSpoyler("Быстрые пресеты", delayPresets))
 
         delayContent.addView(Button(this).apply {
-            text = "💾 Сохранить"
+            text = "Сохранить"
             setOnClickListener {
                 val v = delayInput.text.toString().toLongOrNull()
                 if (v == null || v < 0 || v > 600) {
                     Toast.makeText(
-                        this@MainActivity, "0–600 секунд",
+                        this@MainActivity, "0-600 секунд",
                         Toast.LENGTH_SHORT
                     ).show()
                     return@setOnClickListener
@@ -269,7 +253,7 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
         })
-        root.addView(createSpoyler("⏱ Задержка перед запуском", delayContent))
+        root.addView(createSpoyler("ЗАДЕРЖКА ПЕРЕД ЗАПУСКОМ", delayContent))
 
         // ===== СПОЙЛЕР: Монитор =====
         val monitorContent = LinearLayout(this).apply {
@@ -302,10 +286,10 @@ class MainActivity : AppCompatActivity() {
             onClick = { sec -> intervalInput.setText(sec.toString()) }
         )
         intervalPresets.visibility = View.GONE
-        monitorContent.addView(createSpoyler("⚙️ Быстрые пресеты", intervalPresets))
+        monitorContent.addView(createSpoyler("Быстрые пресеты", intervalPresets))
 
         monitorContent.addView(Button(this).apply {
-            text = "💾 Сохранить интервал"
+            text = "Сохранить интервал"
             setOnClickListener {
                 val v = intervalInput.text.toString().toLongOrNull()
                 if (v == null || v < 5 || v > 600) {
@@ -322,10 +306,10 @@ class MainActivity : AppCompatActivity() {
                 ).show()
             }
         })
-        root.addView(createSpoyler("🔄 Постоянный монитор", monitorContent))
+        root.addView(createSpoyler("ПОСТОЯННЫЙ МОНИТОР", monitorContent))
 
         // ===== Список приложений =====
-        root.addView(sectionTitle("📱 ВЫБЕРИ ПРИЛОЖЕНИЕ"))
+        root.addView(sectionTitle("ВЫБЕРИ ПРИЛОЖЕНИЕ"))
 
         val pm = packageManager
         val apps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
@@ -373,8 +357,6 @@ class MainActivity : AppCompatActivity() {
         setContentView(outerScroll)
     }
 
-    // ===== ХЕЛПЕРЫ =====
-
     private fun sectionTitle(text: String): TextView {
         return TextView(this).apply {
             this.text = text
@@ -417,7 +399,7 @@ class MainActivity : AppCompatActivity() {
             })
 
             addView(TextView(this@MainActivity).apply {
-                text = if (isSelected) "✅ $label" else label
+                text = if (isSelected) "[OK] $label" else label
                 textSize = 16f
                 setTextColor(Color.parseColor("#222222"))
             })
