@@ -32,14 +32,11 @@ class MainActivity : AppCompatActivity() {
         LogWriter.init(this)
 
         val prefs = getSharedPreferences("settings", MODE_PRIVATE)
-        val setupDone = prefs.getBoolean("setup_done", false)
         val allGranted = areAllPermissionsGranted()
 
-        // П3: если разрешения слетели — снова показываем экран приветствия
         if (allGranted) {
             prefs.edit().putBoolean("setup_done", true).commit()
-        } else if (setupDone) {
-            // Разрешения были выданы, но сейчас пропали
+        } else {
             prefs.edit().putBoolean("setup_done", false).commit()
         }
 
@@ -51,7 +48,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     // ============================================================
-    // ЭКРАН ПРИВЕТСТВИЯ (первый запуск или если разрешения слетели)
+    // ЭКРАН ПРИВЕТСТВИЯ
     // ============================================================
 
     private fun showSetupScreen(prefs: android.content.SharedPreferences) {
@@ -67,14 +64,14 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(TextView(this).apply {
             text = "\nДля работы нужно 3 разрешения.\n" +
-                   "Нажми на каждое — откроется системная настройка.\n"
+                   "Нажми на каждое — откроется системная настройка.\n" +
+                   "Потом нажми «Обновить статус».\n"
             textSize = 15f
             gravity = Gravity.CENTER
             setPadding(0, 20, 0, 20)
         })
 
-        // Кнопка 1: Наложение
-        val btnOverlay = Button(this).apply {
+        root.addView(Button(this).apply {
             text = overlayLabel()
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -90,11 +87,9 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-        }
-        root.addView(btnOverlay)
+        })
 
-        // Кнопка 2: Статистика
-        val btnStats = Button(this).apply {
+        root.addView(Button(this).apply {
             text = usageStatsLabel()
             setOnClickListener {
                 startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
@@ -104,11 +99,9 @@ class MainActivity : AppCompatActivity() {
                     Toast.LENGTH_LONG
                 ).show()
             }
-        }
-        root.addView(btnStats)
+        })
 
-        // Кнопка 3: Батарея
-        val btnBattery = Button(this).apply {
+        root.addView(Button(this).apply {
             text = batteryLabel()
             setOnClickListener {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -129,26 +122,21 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-        }
-        root.addView(btnBattery)
+        })
 
-        // Кнопка «Продолжить» — не блокируется (П2 = Нет)
+        root.addView(Button(this).apply {
+            text = "ОБНОВИТЬ СТАТУС"
+            setOnClickListener { recreate() }
+        })
+
         root.addView(Button(this).apply {
             text = "ПРОДОЛЖИТЬ"
-            setPadding(0, 40, 0, 0)
             setOnClickListener {
-                // Сохраняем статус «setup_done» только если всё выдано
                 if (areAllPermissionsGranted()) {
                     prefs.edit().putBoolean("setup_done", true).commit()
                 }
                 recreate()
             }
-        })
-
-        // Кнопка «Проверить снова» — обновить статусы
-        root.addView(Button(this).apply {
-            text = "Обновить статус"
-            setOnClickListener { recreate() }
         })
 
         setContentView(root)
@@ -157,23 +145,24 @@ class MainActivity : AppCompatActivity() {
     private fun overlayLabel(): String {
         val granted = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 && Settings.canDrawOverlays(this)
-        return if (granted) "✅ Наложение поверх окон" else "❌ Наложение поверх окон"
+        return if (granted) "[OK] Наложение поверх окон"
+        else "[--] Наложение поверх окон"
     }
 
     private fun usageStatsLabel(): String {
-        return if (hasUsageStatsPermission()) "✅ Статистика использования"
-        else "❌ Статистика использования"
+        return if (hasUsageStatsPermission()) "[OK] Статистика использования"
+        else "[--] Статистика использования"
     }
 
     private fun batteryLabel(): String {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return "✅ Игнор батареи"
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return "[OK] Игнор батареи"
         val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
         return if (pm.isIgnoringBatteryOptimizations(packageName))
-            "✅ Игнор батареи" else "❌ Игнор батареи"
+            "[OK] Игнор батареи" else "[--] Игнор батареи"
     }
 
     // ============================================================
-    // ГЛАВНЫЙ ЭКРАН (когда все разрешения выданы)
+    // ГЛАВНЫЙ ЭКРАН
     // ============================================================
 
     private fun showMainScreen(prefs: android.content.SharedPreferences) {
@@ -190,7 +179,6 @@ class MainActivity : AppCompatActivity() {
             setPadding(40, 40, 40, 40)
         }
 
-        // Шапка
         root.addView(TextView(this).apply {
             text = "AutoStart"
             textSize = 24f
@@ -201,18 +189,17 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, 8, 0, 12)
         })
 
-        // П1 = B: баннер «не все разрешения выданы»
+        // Баннер «не все разрешения»
         if (!areAllPermissionsGranted()) {
-            val banner = Button(this).apply {
-                text = "⚠️ Не все разрешения выданы — нажми сюда"
+            root.addView(Button(this).apply {
+                text = "! Не все разрешения выданы — нажми сюда"
                 setBackgroundColor(Color.parseColor("#FF9800"))
                 setTextColor(Color.WHITE)
                 setOnClickListener {
                     prefs.edit().putBoolean("setup_done", false).commit()
                     recreate()
                 }
-            }
-            root.addView(banner)
+            })
             root.addView(TextView(this).apply {
                 text = "Без разрешений автозапуск может не работать.\n"
                 textSize = 12f
@@ -220,7 +207,7 @@ class MainActivity : AppCompatActivity() {
             })
         }
 
-        // Тест
+        // ТЕСТ
         val testContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
@@ -249,7 +236,7 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(createSpoyler("ТЕСТ: запустить сервис сейчас", testContent))
 
-        // Логи
+        // ЛОГИ
         val logContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
@@ -294,7 +281,7 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Задержка
+        // ЗАДЕРЖКА
         val delayContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
@@ -327,7 +314,7 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(createSpoyler("ЗАДЕРЖКА ПЕРЕД ЗАПУСКОМ", delayContent))
 
-        // Монитор
+        // МОНИТОР
         val monitorContent = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(0, 8, 0, 8)
@@ -354,7 +341,7 @@ class MainActivity : AppCompatActivity() {
         monitorContent.addView(intervalInput)
 
         val intervalPresets = createPresetRow(
-            presets = listOf(15L, 30L, 60L, 120L),
+            presets = listOf(60L, 120L, 300L, 600L),
             onClick = { sec -> intervalInput.setText(sec.toString()) }
         )
         intervalPresets.visibility = View.GONE
@@ -374,7 +361,7 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(createSpoyler("ПОСТОЯННЫЙ МОНИТОР", monitorContent))
 
-        // Список приложений
+        // СПИСОК ПРИЛОЖЕНИЙ
         root.addView(sectionTitle("ВЫБЕРИ ПРИЛОЖЕНИЕ"))
 
         val pm = packageManager
@@ -437,20 +424,12 @@ class MainActivity : AppCompatActivity() {
     private fun hasUsageStatsPermission(): Boolean {
         return try {
             val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-            val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                appOps.unsafeCheckOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    android.os.Process.myUid(),
-                    packageName
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                appOps.checkOpNoThrow(
-                    AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    android.os.Process.myUid(),
-                    packageName
-                )
-            }
+            @Suppress("DEPRECATION")
+            val mode = appOps.checkOpNoThrow(
+                AppOpsManager.OPSTR_GET_USAGE_STATS,
+                android.os.Process.myUid(),
+                packageName
+            )
             mode == AppOpsManager.MODE_ALLOWED
         } catch (e: Exception) {
             false
