@@ -4,8 +4,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.app.usage.UsageStatsManager
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.Handler
@@ -18,9 +16,8 @@ class KeepAliveService : Service() {
     companion object {
         const val CHANNEL_ID = "autostart_keepalive"
         const val NOTIF_ID = 101
-        const val DEFAULT_MONITOR_INTERVAL_MS = 30000L
+        const val DEFAULT_MONITOR_INTERVAL_MS = 120000L  // 120 секунд
         const val DEFAULT_DELAY_SEC = 15L
-        const val ACTIVITY_WINDOW_MS = 30 * 60 * 1000L
     }
 
     private val handler = Handler(Looper.getMainLooper())
@@ -110,11 +107,6 @@ class KeepAliveService : Service() {
         }
 
         try {
-            if (wasActiveRecently(targetPackage)) {
-                LogWriter.log("$targetPackage активен недавно — не трогаем")
-                return
-            }
-
             val launchIntent = packageManager.getLaunchIntentForPackage(targetPackage)
             if (launchIntent != null) {
                 launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -126,28 +118,6 @@ class KeepAliveService : Service() {
         } catch (e: Exception) {
             LogWriter.log("- ОШИБКА запуска: ${e.message}")
         }
-    }
-
-    private fun wasActiveRecently(packageName: String): Boolean {
-        try {
-            val usm = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val now = System.currentTimeMillis()
-            val begin = now - ACTIVITY_WINDOW_MS
-
-            val stats = usm.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, begin, now)
-            if (stats == null || stats.isEmpty()) return false
-
-            for (stat in stats) {
-                if (stat.packageName == packageName) {
-                    if (now - stat.lastTimeUsed < ACTIVITY_WINDOW_MS) {
-                        return true
-                    }
-                }
-            }
-        } catch (e: Exception) {
-            LogWriter.log("Ошибка UsageStats: ${e.message}")
-        }
-        return false
     }
 
     private fun buildNotification(): android.app.Notification {
