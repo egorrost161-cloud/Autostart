@@ -1,5 +1,6 @@
 package com.example.autostart
 
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -7,6 +8,7 @@ import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
 import android.provider.Settings
 import android.text.InputType
 import android.view.Gravity
@@ -52,7 +54,7 @@ class MainActivity : AppCompatActivity() {
         })
 
         // ===== Разрешения =====
-        root.addView(sectionTitle("🔐 РАЗРЕШЕНИЯ (нажми и выдай оба)"))
+        root.addView(sectionTitle("🔐 РАЗРЕШЕНИЯ (выдай все три)"))
 
         root.addView(Button(this).apply {
             text = "🔓 Наложение поверх окон"
@@ -89,6 +91,42 @@ class MainActivity : AppCompatActivity() {
                     "Найди AutoStart и включи доступ",
                     Toast.LENGTH_LONG
                 ).show()
+            }
+        })
+
+        root.addView(Button(this).apply {
+            text = "🔋 Игнорировать оптимизацию батареи"
+            setOnClickListener {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                        try {
+                            val intent = Intent(
+                                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                Uri.parse("package:$packageName")
+                            )
+                            startActivity(intent)
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Подтверди в диалоге",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } catch (e: Exception) {
+                            // Если прошивка не поддерживает диалог — открываем общий список
+                            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                            Toast.makeText(
+                                this@MainActivity,
+                                "Найди AutoStart в списке",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    } else {
+                        Toast.makeText(
+                            this@MainActivity, "Уже выдано",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
             }
         })
 
@@ -147,7 +185,7 @@ class MainActivity : AppCompatActivity() {
         delayContent.addView(delayInput)
 
         val delayPresets = createPresetRow(
-            presets = listOf(5L, 10L, 15L, 30L),
+            presets = listOf(15L, 20L, 25L, 30L),
             onClick = { sec -> delayInput.setText(sec.toString()) }
         )
         delayPresets.visibility = View.GONE
@@ -183,8 +221,6 @@ class MainActivity : AppCompatActivity() {
             textSize = 14f
             isChecked = currentMonitorEnabled
             setOnCheckedChangeListener { _, checked ->
-                // Просто сохраняем настройку. Сервис продолжает работать.
-                // Цикл монитора сам себя проверит на следующем шаге и выйдет, если false.
                 prefs.edit().putBoolean("monitor_enabled", checked).commit()
                 Toast.makeText(
                     this@MainActivity,
