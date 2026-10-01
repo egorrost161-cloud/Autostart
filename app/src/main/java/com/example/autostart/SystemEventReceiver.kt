@@ -16,18 +16,21 @@ class SystemEventReceiver : BroadcastReceiver() {
 
         when (action) {
             // ===== Питание (зажигание) =====
-            Intent.ACTION_POWER_CONNECTED -> startService(context)
+            Intent.ACTION_POWER_CONNECTED -> startService(context, forceCheck = false)
             Intent.ACTION_POWER_DISCONNECTED -> {
-                // Не запускаем — но лог полезен
                 Log.i("AutoStart", "Питание отключено")
             }
 
             // ===== Экран =====
-            Intent.ACTION_SCREEN_ON -> startService(context)
+            Intent.ACTION_SCREEN_ON -> {
+                // Принудительная проверка: если лаунчер убит — запускаем
+                Log.i("AutoStart", "SCREEN_ON — принудительная проверка")
+                startService(context, forceCheck = true)
+            }
             Intent.ACTION_SCREEN_OFF -> {
                 Log.i("AutoStart", "Экран выключен")
             }
-            Intent.ACTION_USER_PRESENT -> startService(context)
+            Intent.ACTION_USER_PRESENT -> startService(context, forceCheck = false)
 
             // ===== Wi-Fi / сеть =====
             WifiManager.WIFI_STATE_CHANGED_ACTION -> {
@@ -36,20 +39,20 @@ class SystemEventReceiver : BroadcastReceiver() {
                     WifiManager.WIFI_STATE_UNKNOWN
                 )
                 if (state == WifiManager.WIFI_STATE_ENABLED) {
-                    startService(context)
+                    startService(context, forceCheck = false)
                 }
             }
-            WifiManager.NETWORK_STATE_CHANGED_ACTION -> startService(context)
-            "android.net.conn.CONNECTIVITY_CHANGE" -> startService(context)
+            WifiManager.NETWORK_STATE_CHANGED_ACTION -> startService(context, forceCheck = false)
+            "android.net.conn.CONNECTIVITY_CHANGE" -> startService(context, forceCheck = false)
             Intent.ACTION_AIRPLANE_MODE_CHANGED -> {
                 Log.i("AutoStart", "Авиарежим изменён")
             }
 
             // ===== Периферия =====
-            Intent.ACTION_HEADSET_PLUG -> startService(context)
+            Intent.ACTION_HEADSET_PLUG -> startService(context, forceCheck = false)
 
             // ===== Медиа =====
-            Intent.ACTION_MEDIA_MOUNTED -> startService(context)
+            Intent.ACTION_MEDIA_MOUNTED -> startService(context, forceCheck = false)
             Intent.ACTION_MEDIA_EJECT -> {
                 Log.i("AutoStart", "SD-карта извлечена")
             }
@@ -67,8 +70,11 @@ class SystemEventReceiver : BroadcastReceiver() {
         }
     }
 
-    private fun startService(context: Context) {
+    private fun startService(context: Context, forceCheck: Boolean) {
         val svc = Intent(context, KeepAliveService::class.java)
+        if (forceCheck) {
+            svc.putExtra("FORCE_CHECK", true)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             context.startForegroundService(svc)
         } else {
